@@ -1,1 +1,1 @@
-# energypilot-ai.
+# energypilot-ai
