@@ -17,7 +17,19 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     ollama_base_url: str | None = None
 
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # Next.js dev-сервер занимает следующий свободный порт (3000, 3001,
+    # 3002...), если предыдущий держит зависший процесс. Перечисляем эти
+    # порты явно и для localhost, и для 127.0.0.1 (браузер считает их
+    # разными origin) — не открываем "*", чтобы список оставался осознанным
+    # dev-белым списком.
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+    ]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
