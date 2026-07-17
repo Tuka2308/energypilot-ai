@@ -17,7 +17,8 @@ AI-ассистент, который по загруженному счёту /
 - OCR: Tesseract (через pytesseract) — офлайн, без ключей/оплаты; для PDF
   первая страница рендерится в изображение через PyMuPDF
 - ML: Prophet (прогноз счёта, одна модель без ансамбля)
-- LLM: OpenAI API, fallback — Ollama офлайн (подключается на следующем этапе)
+- LLM: OpenAI API → fallback Ollama офлайн → детерминированный офлайн-режим
+  (чат работает и без ключей)
 - DB: PostgreSQL
 - Deploy: Docker + Railway
 
@@ -26,18 +27,20 @@ AI-ассистент, который по загруженному счёту /
 ```
 frontend (Next.js) --HTTP/JSON--> backend (FastAPI) --> PostgreSQL
                                         |
-                                        └-- services/ (bills_service.py —
-                                            реальный OCR; прогноз/аномалии/
-                                            чат пока моки, дальше: ML-прогноз /
-                                            правило аномалий / LLM-чат)
+                                        └-- services/
+                                            bills_service      — OCR/разбор счёта
+                                            bill_history       — история счетов
+                                            forecast_service   — прогноз (Prophet)
+                                            anomalies_service  — пороговое правило
+                                            chat_service       — LLM-пайплайн
+                                                (контекст: профиль + прогноз +
+                                                 аномалии + тариф → промпт)
 ```
 
 Backend разложен по фичам онбординга, загрузки счёта, прогноза, аномалий и
 чата: `routers/` — HTTP-слой, `models/schemas.py` — контракты
-запросов/ответов, `services/` — бизнес-логика (`bills_service.py` уже
-реальный OCR, остальное пока заглушки с моковыми ответами, чтобы фронт мог
-интегрироваться до готовности ML/LLM). Системные зависимости OCR — в
-[backend/README.md](backend/README.md).
+запросов/ответов, `services/` — бизнес-логика. Детали каждой фичи и
+системные зависимости — в [backend/README.md](backend/README.md).
 
 ## Локальный запуск
 

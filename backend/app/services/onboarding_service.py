@@ -17,3 +17,8 @@ def create_profile(payload: OnboardingRequest) -> OnboardingResponse:
     profile_id = str(uuid4())
     _profiles[profile_id] = payload
     return OnboardingResponse(profile_id=profile_id, received=payload)
+
+
+def get_profile(profile_id: str) -> OnboardingRequest | None:
+    """Профиль по id — нужен чат-пайплайну для сбора контекста."""
+    return _profiles.get(profile_id)

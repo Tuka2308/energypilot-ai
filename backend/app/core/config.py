@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://energypilot:energypilot@localhost:5432/energypilot"
 
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    # Офлайн-fallback по стеку CLAUDE.md: локальный Ollama, если нет ключа
+    # OpenAI (например, http://localhost:11434).
     ollama_base_url: str | None = None
+    ollama_model: str = "llama3.1"
 
     # Next.js dev-сервер занимает следующий свободный порт (3000, 3001,
     # 3002...), если предыдущий держит зависший процесс. Перечисляем эти
