@@ -14,6 +14,8 @@ AI-ассистент, который по загруженному счёту /
 
 - Frontend: Next.js (App Router) + Tailwind CSS
 - Backend: FastAPI
+- OCR: Tesseract (через pytesseract) — офлайн, без ключей/оплаты; для PDF
+  первая страница рендерится в изображение через PyMuPDF
 - ML: scikit-learn / Prophet (подключается на следующем этапе)
 - LLM: OpenAI API, fallback — Ollama офлайн (подключается на следующем этапе)
 - DB: PostgreSQL
@@ -24,15 +26,18 @@ AI-ассистент, который по загруженному счёту /
 ```
 frontend (Next.js) --HTTP/JSON--> backend (FastAPI) --> PostgreSQL
                                         |
-                                        └-- services/ (пока моки,
-                                            дальше: OCR / ML-прогноз /
+                                        └-- services/ (bills_service.py —
+                                            реальный OCR; прогноз/аномалии/
+                                            чат пока моки, дальше: ML-прогноз /
                                             правило аномалий / LLM-чат)
 ```
 
 Backend разложен по фичам онбординга, загрузки счёта, прогноза, аномалий и
 чата: `routers/` — HTTP-слой, `models/schemas.py` — контракты
-запросов/ответов, `services/` — бизнес-логика (сейчас заглушки с моковыми
-ответами, чтобы фронт мог интегрироваться до готовности OCR/ML/LLM).
+запросов/ответов, `services/` — бизнес-логика (`bills_service.py` уже
+реальный OCR, остальное пока заглушки с моковыми ответами, чтобы фронт мог
+интегрироваться до готовности ML/LLM). Системные зависимости OCR — в
+[backend/README.md](backend/README.md).
 
 ## Локальный запуск
 

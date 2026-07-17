@@ -8,10 +8,15 @@ router = APIRouter(prefix="/bills", tags=["bills"])
 
 @router.post("/upload", response_model=BillUploadResponse)
 async def upload_bill(file: UploadFile) -> BillUploadResponse:
-    """Фото/PDF счёта. Реальный OCR подключается позже; контракт ответа уже
-    содержит `requires_manual_review`, чтобы фронт мог сразу верстать
-    fallback-форму ручной правки."""
-    return bills_service.process_bill_upload(filename=file.filename or "unknown")
+    """Фото/PDF счёта. OCR-сервис сам гарантирует, что любая ошибка
+    распознавания превращается в requires_manual_review=True, а не в
+    500 — эндпоинт остаётся тонким и не должен ничего для этого ловить."""
+    content = await file.read()
+    return bills_service.process_bill_upload(
+        filename=file.filename or "unknown",
+        content=content,
+        content_type=file.content_type,
+    )
 
 
 @router.post("/manual-correction", response_model=BillUploadResponse)
