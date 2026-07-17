@@ -22,7 +22,10 @@ from app.services.chat_service import build_context, _render_facts, get_coach_re
 
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch):
-    """Чистая история/диалоги и гарантированно офлайн-режим LLM."""
+    """Чистая история/диалоги и гарантированно офлайн-режим LLM (обнуляем
+    все три ключа каскада — реальный backend/.env может содержать любой
+    из них, тесты не должны зависеть от сети)."""
+    monkeypatch.setattr(settings, "gemini_api_key", None)
     monkeypatch.setattr(settings, "openai_api_key", None)
     monkeypatch.setattr(settings, "ollama_base_url", None)
     hist.clear()

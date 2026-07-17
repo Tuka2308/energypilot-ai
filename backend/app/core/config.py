@@ -14,10 +14,16 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://energypilot:energypilot@localhost:5432/energypilot"
 
+    # Каскад чат-провайдеров (см. chat_service._call_llm): Gemini -> OpenAI
+    # -> Ollama офлайн -> детерминированный fallback. Gemini первым, потому
+    # что у команды есть бесплатный ключ Google AI Studio — дешевле для
+    # демо, чем платный OpenAI.
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
-    # Офлайн-fallback по стеку CLAUDE.md: локальный Ollama, если нет ключа
-    # OpenAI (например, http://localhost:11434).
+    # Офлайн-fallback по стеку CLAUDE.md: локальный Ollama, если нет ни
+    # одного облачного ключа (например, http://localhost:11434).
     ollama_base_url: str | None = None
     ollama_model: str = "llama3.1"
 

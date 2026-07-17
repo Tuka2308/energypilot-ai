@@ -21,9 +21,11 @@ pymupdf==1.28.0
 prophet==1.3.0
 pandas==3.0.3
 
-# AI-чат энергокоуч (app/services/chat_service.py): OpenAI SDK для
-# основного LLM-пути. Офлайн-fallback'ам SDK не нужен: Ollama вызывается
-# через stdlib urllib, детерминированный fallback — чистый Python.
+# AI-чат энергокоуч (app/services/chat_service.py): каскад провайдеров —
+# google-genai (Gemini, первый в каскаде — бесплатный ключ команды) и
+# openai SDK. Офлайн-fallback'ам SDK не нужен: Ollama вызывается через
+# stdlib urllib, детерминированный fallback — чистый Python.
+google-genai==2.12.1
 openai==2.46.0
 
 # Тесты (регрессия распознавания счёта на реальном fixture + прогноз + чат).

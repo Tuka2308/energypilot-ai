@@ -26,11 +26,13 @@
    шаг). Уточняющий вопрос («а если стирать ночью?») уходит в LLM вместе
    с предыдущими репликами, обрезанными до MAX_TURNS последних пар.
 
-5. ВЫЗОВ LLM (`_call_llm`). Каскад по стеку CLAUDE.md: OpenAI (JSON-mode,
-   структурированный ответ {reply, estimated_savings_tenge}) → Ollama
-   офлайн (тот же JSON-контракт) → детерминированный офлайн-fallback из
-   собранного контекста с явной пометкой, как включить LLM. Ни один сбой
-   не роняет эндпоинт.
+5. ВЫЗОВ LLM (`_call_llm`). Каскад провайдеров, первый настроенный и
+   рабочий побеждает: Gemini (JSON-mode, gemini-2.0-flash — бесплатный
+   ключ команды) → OpenAI (тот же JSON-контракт {reply,
+   estimated_savings_tenge}) → Ollama офлайн → детерминированный
+   офлайн-fallback из собранного контекста с явной пометкой, как включить
+   LLM. Ни один сбой одного провайдера не роняет эндпоинт — просто пробуем
+   следующий по каскаду.
 
 6. ОТВЕТ. ChatMessageResponse.sources перечисляет, какие блоки данных
    реально вошли в контекст («profile», «forecast», «anomalies»,
@@ -182,6 +184,11 @@ SYSTEM_RULES = """Ты — энергокоуч EnergyPilot AI: помогаеш
 
 
 def _call_llm(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, float | None]:
+    if settings.gemini_api_key:
+        try:
+            return _call_gemini(system_prompt, messages)
+        except Exception:
+            logger.warning("Gemini недоступен, пробуем OpenAI", exc_info=True)
     if settings.openai_api_key:
         try:
             return _call_openai(system_prompt, messages)
@@ -193,6 +200,33 @@ def _call_llm(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, 
         except Exception:
             logger.warning("Ollama недоступен", exc_info=True)
     raise LLMUnavailable
+
+
+def _call_gemini(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, float | None]:
+    # Ленивый импорт: без ключа SDK не нужен (см. комментарий у _call_openai).
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    # Gemini использует роль "model" вместо "assistant" — единственная
+    # разница в контракте messages по сравнению с OpenAI/Ollama.
+    contents = [
+        types.Content(
+            role="model" if m["role"] == "assistant" else "user",
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+    ]
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",  # тот же JSON-контракт, что у OpenAI
+            temperature=0.4,
+        ),
+    )
+    return _parse_llm_json(response.text or "")
 
 
 def _call_openai(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, float | None]:
@@ -248,8 +282,8 @@ def _parse_llm_json(content: str) -> tuple[str, float | None]:
 
 _OFFLINE_NOTE = (
     "\n\n⚙️ Офлайн-режим: LLM не настроен. Для полноценных ответов добавьте "
-    "OPENAI_API_KEY в backend/.env (или OLLAMA_BASE_URL для локальной "
-    "модели) — см. backend/README.md."
+    "GEMINI_API_KEY (или OPENAI_API_KEY / OLLAMA_BASE_URL) в backend/.env "
+    "— см. backend/README.md."
 )
 
 
