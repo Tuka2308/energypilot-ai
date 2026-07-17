@@ -64,9 +64,20 @@ class BillManualCorrection(BaseModel):
     amount_tenge: float = Field(gt=0)
     consumption_kwh: float | None = Field(default=None, ge=0)
     period: str
+    # Опционально: если фронт передаёт profile_id, подтверждённое показание
+    # попадает в историю профиля и участвует в прогнозе. Поле опциональное,
+    # чтобы не ломать существующий контракт эндпоинта.
+    profile_id: str | None = None
 
 
 # --- Прогноз -----------------------------------------------------------------
+
+
+class ForecastStatus(str, Enum):
+    ok = "ok"
+    # Истории < MIN_HISTORY_POINTS месяцев: Prophet не даст осмысленного
+    # прогноза, поэтому явно сообщаем статус вместо фейкового числа.
+    insufficient_history = "insufficient_history"
 
 
 class ForecastCategoryBreakdown(BaseModel):
@@ -76,12 +87,31 @@ class ForecastCategoryBreakdown(BaseModel):
 
 
 class ForecastResponse(BaseModel):
+    """Ответ прогноза.
+
+    Изменения относительно скелета (объяснимо на защите):
+    - `status` — различает готовый прогноз и случай нехватки истории
+      (новый пользователь с 1-2 счетами), чтобы не показывать выдуманное число.
+    - `predicted_amount_lower_tenge` / `predicted_amount_upper_tenge` —
+      доверительный интервал, который Prophet отдаёт из коробки (yhat_lower /
+      yhat_upper); показываем пользователю честный разброс, а не одну цифру.
+    - `history_points` — сколько месяцев истории пошло в модель (объяснимость).
+    - числовые поля стали Optional: при insufficient_history их просто нет.
+    `confidence` оставлен для обратной совместимости и выводится из ширины
+    интервала (уже интервал → выше уверенность).
+    """
+
     profile_id: str
-    forecast_period: str
-    predicted_amount_tenge: float
-    predicted_consumption_kwh: float
-    confidence: float = Field(ge=0, le=1)
-    breakdown: list[ForecastCategoryBreakdown]
+    status: ForecastStatus = ForecastStatus.ok
+    forecast_period: str | None = None
+    predicted_amount_tenge: float | None = None
+    predicted_amount_lower_tenge: float | None = None
+    predicted_amount_upper_tenge: float | None = None
+    predicted_consumption_kwh: float | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    breakdown: list[ForecastCategoryBreakdown] = []
+    history_points: int = 0
+    message: str | None = None
     generated_at: datetime
 
 

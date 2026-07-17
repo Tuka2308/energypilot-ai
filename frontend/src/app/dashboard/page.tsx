@@ -50,26 +50,50 @@ export default function DashboardPage() {
     return <p className="text-sm text-foreground/60">Загружаем прогноз...</p>;
   }
 
+  const hasForecast =
+    forecast.status === "ok" && forecast.predicted_amount_tenge !== null;
+
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-2xl font-semibold">Дашборд</h1>
         <p className="text-sm text-foreground/60">
-          Прогноз на {forecast.forecast_period}
+          {hasForecast
+            ? `Прогноз на ${forecast.forecast_period}`
+            : "Прогноз счёта"}
         </p>
       </div>
 
-      <div className="flex flex-col gap-1 rounded-lg border border-black/10 p-5 dark:border-white/10">
-        <span className="text-sm text-foreground/60">Ожидаемая сумма счёта</span>
-        <span className="text-3xl font-semibold">
-          {forecast.predicted_amount_tenge.toLocaleString("ru-RU")} ₸
-        </span>
-        <span className="text-sm text-foreground/60">
-          {forecast.predicted_consumption_kwh} кВт·ч · уверенность прогноза{" "}
-          {Math.round(forecast.confidence * 100)}%
-        </span>
-      </div>
+      {hasForecast ? (
+        <div className="flex flex-col gap-1 rounded-lg border border-black/10 p-5 dark:border-white/10">
+          <span className="text-sm text-foreground/60">Ожидаемая сумма счёта</span>
+          <span className="text-3xl font-semibold">
+            {forecast.predicted_amount_tenge!.toLocaleString("ru-RU")} ₸
+          </span>
+          {forecast.predicted_amount_lower_tenge !== null &&
+            forecast.predicted_amount_upper_tenge !== null && (
+              <span className="text-sm text-foreground/60">
+                Вероятный диапазон:{" "}
+                {forecast.predicted_amount_lower_tenge.toLocaleString("ru-RU")} –{" "}
+                {forecast.predicted_amount_upper_tenge.toLocaleString("ru-RU")} ₸
+              </span>
+            )}
+          <span className="text-sm text-foreground/60">
+            {forecast.predicted_consumption_kwh ?? "—"} кВт·ч · по истории за{" "}
+            {forecast.history_points} мес.
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-5">
+          <span className="font-medium">Прогноз пока недоступен</span>
+          <span className="text-sm text-foreground/70">
+            {forecast.message ??
+              "Недостаточно истории счетов для прогноза. Загрузите ещё счета."}
+          </span>
+        </div>
+      )}
 
+      {hasForecast && (
       <div className="flex flex-col gap-3">
         <h2 className="font-medium">Разбивка по категориям</h2>
         <div className="flex flex-col gap-2">
@@ -92,6 +116,7 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <h2 className="font-medium">Аномалии</h2>

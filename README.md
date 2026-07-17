@@ -16,7 +16,7 @@ AI-ассистент, который по загруженному счёту /
 - Backend: FastAPI
 - OCR: Tesseract (через pytesseract) — офлайн, без ключей/оплаты; для PDF
   первая страница рендерится в изображение через PyMuPDF
-- ML: scikit-learn / Prophet (подключается на следующем этапе)
+- ML: Prophet (прогноз счёта, одна модель без ансамбля)
 - LLM: OpenAI API, fallback — Ollama офлайн (подключается на следующем этапе)
 - DB: PostgreSQL
 - Deploy: Docker + Railway

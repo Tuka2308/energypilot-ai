@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Form, UploadFile
 
 from app.models.schemas import BillManualCorrection, BillUploadResponse
 from app.services import bills_service
@@ -7,15 +7,22 @@ router = APIRouter(prefix="/bills", tags=["bills"])
 
 
 @router.post("/upload", response_model=BillUploadResponse)
-async def upload_bill(file: UploadFile) -> BillUploadResponse:
+async def upload_bill(
+    file: UploadFile, profile_id: str | None = Form(default=None)
+) -> BillUploadResponse:
     """Фото/PDF счёта. OCR-сервис сам гарантирует, что любая ошибка
     распознавания превращается в requires_manual_review=True, а не в
-    500 — эндпоинт остаётся тонким и не должен ничего для этого ловить."""
+    500 — эндпоинт остаётся тонким и не должен ничего для этого ловить.
+
+    `profile_id` опционален (Form-поле): если передан, уверенно распознанный
+    счёт попадает в историю профиля и участвует в прогнозе. Без него флоу
+    работает как раньше — контракт не ломается."""
     content = await file.read()
     return bills_service.process_bill_upload(
         filename=file.filename or "unknown",
         content=content,
         content_type=file.content_type,
+        profile_id=profile_id,
     )
 
 

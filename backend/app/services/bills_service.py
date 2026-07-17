@@ -35,6 +35,7 @@ import pytesseract
 from PIL import Image, ImageOps
 
 from app.models.schemas import BillManualCorrection, BillUploadResponse
+from app.services import bill_history_service
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,9 @@ RU_MONTH_PATTERN = re.compile(
 TESSERACT_LANGS = "rus+eng"
 
 
-def process_bill_upload(filename: str, content: bytes, content_type: str | None) -> BillUploadResponse:
+def process_bill_upload(
+    filename: str, content: bytes, content_type: str | None, profile_id: str | None = None
+) -> BillUploadResponse:
     bill_id = str(uuid4())
     is_pdf = (content_type == "application/pdf") or filename.lower().endswith(".pdf")
 
@@ -103,13 +106,25 @@ def process_bill_upload(filename: str, content: bytes, content_type: str | None)
             logger.warning("Не удалось разобрать PDF счёта %s", filename, exc_info=True)
             return _manual_review_response(bill_id, "pdf_parse_error")
         if structured is not None:
+            _record_if_confident(profile_id, structured)
             return structured
         # PDF без текстового слоя (скан) — падаем в OCR-путь ниже.
 
-    return _extract_via_ocr(bill_id, filename, content, content_type)
+    response = _extract_via_ocr(bill_id, filename, content, content_type)
+    _record_if_confident(profile_id, response)
+    return response
 
 
 def apply_manual_correction(payload: BillManualCorrection) -> BillUploadResponse:
+    # Ручная правка — это подтверждённое пользователем показание, пишем в
+    # историю (если фронт передал profile_id). Именно эти данные потом
+    # кормят Prophet-прогноз.
+    bill_history_service.record_reading(
+        profile_id=payload.profile_id or "",
+        period=payload.period,
+        amount_tenge=payload.amount_tenge,
+        consumption_kwh=payload.consumption_kwh,
+    )
     return BillUploadResponse(
         bill_id=payload.bill_id,
         ocr_status="manual_override",
@@ -118,6 +133,23 @@ def apply_manual_correction(payload: BillManualCorrection) -> BillUploadResponse
         period=payload.period,
         requires_manual_review=False,
     )
+
+
+def _record_if_confident(profile_id: str | None, response: BillUploadResponse) -> None:
+    """Пишем в историю только уверенно распознанные счета (не те, что ушли
+    на ручную проверку) и только если известны profile_id/период/сумма."""
+    if (
+        profile_id
+        and not response.requires_manual_review
+        and response.period
+        and response.amount_tenge is not None
+    ):
+        bill_history_service.record_reading(
+            profile_id=profile_id,
+            period=response.period,
+            amount_tenge=response.amount_tenge,
+            consumption_kwh=response.consumption_kwh,
+        )
 
 
 def _manual_review_response(

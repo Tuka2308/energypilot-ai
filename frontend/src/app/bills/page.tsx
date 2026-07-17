@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { submitManualCorrection, uploadBill } from "@/lib/api";
+import { getProfileId } from "@/lib/profile";
 import type { BillUploadResponse } from "@/lib/types";
 
 export default function BillsPage() {
   const router = useRouter();
+  const [profileId] = useState(() => getProfileId());
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [ocrResult, setOcrResult] = useState<BillUploadResponse | null>(null);
   const [amount, setAmount] = useState<number | undefined>();
@@ -22,7 +24,7 @@ export default function BillsPage() {
     try {
       // OCR никогда не должен блокировать флоу: даже если распознавание
       // низкой уверенности, показываем то, что есть, и даём поправить руками.
-      const result = await uploadBill(file);
+      const result = await uploadBill(file, profileId);
       setOcrResult(result);
       setAmount(result.amount_tenge ?? undefined);
       setConsumption(result.consumption_kwh ?? undefined);
@@ -41,6 +43,7 @@ export default function BillsPage() {
       amount_tenge: amount,
       consumption_kwh: consumption,
       period,
+      profile_id: profileId,
     });
     setSaved(true);
   }

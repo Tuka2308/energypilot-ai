@@ -38,6 +38,7 @@ export interface BillManualCorrection {
   amount_tenge: number;
   consumption_kwh?: number | null;
   period: string;
+  profile_id?: string | null;
 }
 
 export interface ForecastCategoryBreakdown {
@@ -46,13 +47,21 @@ export interface ForecastCategoryBreakdown {
   share_percent: number;
 }
 
+export type ForecastStatus = "ok" | "insufficient_history";
+
 export interface ForecastResponse {
   profile_id: string;
-  forecast_period: string;
-  predicted_amount_tenge: number;
-  predicted_consumption_kwh: number;
-  confidence: number;
+  status: ForecastStatus;
+  forecast_period: string | null;
+  predicted_amount_tenge: number | null;
+  // Доверительный интервал из Prophet (yhat_lower / yhat_upper).
+  predicted_amount_lower_tenge: number | null;
+  predicted_amount_upper_tenge: number | null;
+  predicted_consumption_kwh: number | null;
+  confidence: number | null;
   breakdown: ForecastCategoryBreakdown[];
+  history_points: number;
+  message: string | null;
   generated_at: string;
 }
 

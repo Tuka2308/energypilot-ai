@@ -37,9 +37,12 @@ export function submitOnboarding(payload: OnboardingRequest) {
   });
 }
 
-export function uploadBill(file: File) {
+export function uploadBill(file: File, profileId?: string | null) {
   const formData = new FormData();
   formData.append("file", file);
+  // profile_id опционален: если есть, распознанный счёт попадёт в историю
+  // профиля и будет учтён в прогнозе.
+  if (profileId) formData.append("profile_id", profileId);
   return request<BillUploadResponse>("/bills/upload", {
     method: "POST",
     body: formData,
