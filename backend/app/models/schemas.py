@@ -124,6 +124,14 @@ class AnomalySeverity(str, Enum):
     high = "high"
 
 
+class AnomalyStatus(str, Enum):
+    ok = "ok"
+    # Истории < MIN_HISTORY_POINTS месяцев: не с чем сравнивать текущий
+    # период, поэтому явно сообщаем статус вместо ложного вывода (тот же
+    # порог, что у прогноза — см. forecast_service).
+    insufficient_history = "insufficient_history"
+
+
 class Anomaly(BaseModel):
     id: str
     detected_at: datetime
@@ -131,11 +139,32 @@ class Anomaly(BaseModel):
     description: str
     severity: AnomalySeverity
     change_percent: float
+    # Структурированные поля (добавлены к скелету): само число + база
+    # сравнения. Нужны и UI (карточка), и промпту AI-чата на следующем шаге,
+    # чтобы не парсить их обратно из свободного текста description.
+    metric: str = "consumption_kwh"  # что сравнивали: consumption_kwh | amount_tenge
+    current_period: str | None = None  # "YYYY-MM"
+    current_value: float | None = None
+    baseline_value: float | None = None
+    baseline_label: str | None = None  # с чем сравнивали (среднее/год назад)
 
 
 class AnomaliesResponse(BaseModel):
+    """Ответ по аномалиям.
+
+    Изменения относительно скелета (объяснимо на защите):
+    - `status` — различает «проверили, всё в норме / есть аномалия» и «не с
+      чем сравнивать» (новый пользователь), чтобы UI не показывал
+      «аномалий нет» там, где на самом деле нет истории.
+    - `history_points` / `message` — объяснимость и человекочитаемый текст
+      для insufficient_history (симметрично ForecastResponse).
+    """
+
     profile_id: str
+    status: AnomalyStatus = AnomalyStatus.ok
     anomalies: list[Anomaly]
+    history_points: int = 0
+    message: str | None = None
 
 
 # --- Чат / энергокоуч ----------------------------------------------------------

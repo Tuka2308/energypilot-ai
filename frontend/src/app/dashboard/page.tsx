@@ -120,7 +120,12 @@ export default function DashboardPage() {
 
       <div className="flex flex-col gap-3">
         <h2 className="font-medium">Аномалии</h2>
-        {anomalies.anomalies.length === 0 ? (
+        {anomalies.status === "insufficient_history" ? (
+          <p className="text-sm text-foreground/60">
+            {anomalies.message ??
+              "Недостаточно истории счетов, чтобы проверить аномалии."}
+          </p>
+        ) : anomalies.anomalies.length === 0 ? (
           <p className="text-sm text-foreground/60">Аномалий не обнаружено.</p>
         ) : (
           anomalies.anomalies.map((anomaly) => (

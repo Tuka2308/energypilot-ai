@@ -66,6 +66,7 @@ export interface ForecastResponse {
 }
 
 export type AnomalySeverity = "low" | "medium" | "high";
+export type AnomalyStatus = "ok" | "insufficient_history";
 
 export interface Anomaly {
   id: string;
@@ -74,11 +75,19 @@ export interface Anomaly {
   description: string;
   severity: AnomalySeverity;
   change_percent: number;
+  metric: string;
+  current_period: string | null;
+  current_value: number | null;
+  baseline_value: number | null;
+  baseline_label: string | null;
 }
 
 export interface AnomaliesResponse {
   profile_id: string;
+  status: AnomalyStatus;
   anomalies: Anomaly[];
+  history_points: number;
+  message: string | null;
 }
 
 export interface ChatMessageRequest {
