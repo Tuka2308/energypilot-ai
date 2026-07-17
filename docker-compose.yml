@@ -29,6 +29,11 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    # Ollama обычно крутится на хосте, не в compose. host.docker.internal
+    # уже работает "из коробки" на Docker Desktop (Mac/Windows); на Linux
+    # нужна явная эта запись (Docker >= 20.10), иначе имя не резолвится.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   db_data:
