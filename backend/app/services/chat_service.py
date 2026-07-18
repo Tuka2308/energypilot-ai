@@ -27,12 +27,13 @@
    с предыдущими репликами, обрезанными до MAX_TURNS последних пар.
 
 5. ВЫЗОВ LLM (`_call_llm`). Каскад провайдеров, первый настроенный и
-   рабочий побеждает: Gemini (JSON-mode, gemini-2.0-flash — бесплатный
-   ключ команды) → OpenAI (тот же JSON-контракт {reply,
-   estimated_savings_tenge}) → Ollama офлайн → детерминированный
-   офлайн-fallback из собранного контекста с явной пометкой, как включить
-   LLM. Ни один сбой одного провайдера не роняет эндпоинт — просто пробуем
-   следующий по каскаду.
+   рабочий побеждает: OpenAI (JSON-mode, рекомендованный путь — Gemini
+   free tier у команды заблокирован региональным ограничением аккаунта
+   Google) → Gemini (тот же JSON-контракт {reply, estimated_savings_tenge},
+   заработает сам, если квоту почините) → Ollama офлайн →
+   детерминированный офлайн-fallback из собранного контекста с явной
+   пометкой, как включить LLM. Ни один сбой одного провайдера не роняет
+   эндпоинт — просто пробуем следующий по каскаду.
 
 6. ОТВЕТ. ChatMessageResponse.sources перечисляет, какие блоки данных
    реально вошли в контекст («profile», «forecast», «anomalies»,
@@ -184,16 +185,23 @@ SYSTEM_RULES = """Ты — энергокоуч EnergyPilot AI: помогаеш
 
 
 def _call_llm(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, float | None]:
-    if settings.gemini_api_key:
-        try:
-            return _call_gemini(system_prompt, messages)
-        except Exception:
-            logger.warning("Gemini недоступен, пробуем OpenAI", exc_info=True)
+    # OpenAI первым: Gemini free tier у команды подтверждённо недоступен
+    # (429 RESOURCE_EXHAUSTED, limit: 0 — региональное ограничение аккаунта
+    # Google, проверено сырым curl напрямую к API в обход этого кода, не
+    # баг здесь). Держать Gemini первым означало бы на каждый чат-запрос
+    # сначала ждать гарантированный отказ, а потом уже идти в рабочий
+    # OpenAI. Gemini оставлен в каскаде вторым — заработает сам, если
+    # регион/квоту почините, код менять не придётся.
     if settings.openai_api_key:
         try:
             return _call_openai(system_prompt, messages)
         except Exception:
-            logger.warning("OpenAI недоступен, пробуем Ollama", exc_info=True)
+            logger.warning("OpenAI недоступен, пробуем Gemini", exc_info=True)
+    if settings.gemini_api_key:
+        try:
+            return _call_gemini(system_prompt, messages)
+        except Exception:
+            logger.warning("Gemini недоступен, пробуем Ollama", exc_info=True)
     if settings.ollama_base_url:
         try:
             return _call_ollama(system_prompt, messages)
@@ -282,7 +290,7 @@ def _parse_llm_json(content: str) -> tuple[str, float | None]:
 
 _OFFLINE_NOTE = (
     "\n\n⚙️ Офлайн-режим: LLM не настроен. Для полноценных ответов добавьте "
-    "GEMINI_API_KEY (или OPENAI_API_KEY / OLLAMA_BASE_URL) в backend/.env "
+    "OPENAI_API_KEY (или GEMINI_API_KEY / OLLAMA_BASE_URL) в backend/.env "
     "— см. backend/README.md."
 )
 
