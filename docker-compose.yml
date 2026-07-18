@@ -24,7 +24,13 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://energypilot:energypilot@db:5432/energypilot
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      # CORS_ORIGINS сюда специально не прописан: он живёт в backend/.env
+      # (bind-mounted в /app/.env — см. volumes ниже) вместе с
+      # OPENAI_API_KEY и остальными настройками. Реальная переменная
+      # окружения контейнера всегда перебивает файл .env для
+      # pydantic-settings, поэтому дублировать её здесь со старым
+      # значением — верный способ тихо сузить allowlist обратно до
+      # localhost:3000 и словить необъяснимый CORS-фейл на 3001/3002.
     ports:
       - "8000:8000"
     volumes:

@@ -4,6 +4,10 @@ FastAPI-бэкенд под MVP-скоуп (см. корневой `CLAUDE.md`).
 распознавание счёта, прогноз, аномалии, AI-чат — уже с реальной логикой
 (`app/services/*`).
 
+Быстрый старт с нуля (git clone → docker compose → frontend) и полная
+таблица переменных окружения — в [корневом README](../README.md#локальный-запуск-с-нуля).
+Здесь — как устроена каждая фича и специфичные для backend детали запуска.
+
 ## Как строится прогноз
 
 Одна модель — **Prophet** (по MVP-скоупу: без ансамбля LSTM/XGBoost).
@@ -126,15 +130,20 @@ true`, а не тихо-неверное число.
 
 ```
 app/
-  main.py            # создание FastAPI-приложения, CORS, регистрация роутеров
-  core/config.py      # настройки из env/.env
-  routers/            # HTTP-слой: онбординг, счета, прогноз, аномалии, чат
-  models/schemas.py   # Pydantic-контракты запросов/ответов
-  services/           # бизнес-логика: bills_service.py — OCR/разбор счёта,
-                       # bill_history_service.py — история счетов профиля,
-                       # forecast_service.py — прогноз (Prophet),
-                       # аномалии/чат пока моки
+  main.py                     # создание FastAPI-приложения, CORS, регистрация роутеров
+  core/config.py               # настройки из env/.env
+  routers/                     # HTTP-слой: онбординг, счета, прогноз, аномалии, чат
+  models/schemas.py            # Pydantic-контракты запросов/ответов
+  services/
+    onboarding_service.py       # профиль квартиры/техники/тарифа
+    bills_service.py            # OCR/разбор счёта (Tesseract | PyMuPDF-таблица)
+    bill_history_service.py     # история подтверждённых счетов профиля
+    forecast_service.py         # прогноз (Prophet) + доверительный интервал
+    anomalies_service.py        # пороговое правило по истории
+    chat_service.py             # LLM-пайплайн энергокоуча
 ```
+
+Все шесть сервисов — рабочая логика, ничего не осталось моком.
 
 ## Системные зависимости
 
@@ -168,19 +177,24 @@ sudo apt-get install tesseract-ocr tesseract-ocr-rus
 точный (читаем текстовый слой). В обоих случаях при сомнении сервис не
 подставляет случайные цифры, а возвращает `requires_manual_review: true`.
 
-## Локальный запуск
+## Локальный запуск без Docker
+
+Docker (см. корневой README) — основной проверенный путь. Напрямую через
+venv тоже работает (Python 3.11+; в `Dockerfile` — 3.12, ей и стоит
+следовать, если есть выбор), но тогда нужно руками поставить
+`tesseract-ocr` (см. «Системные зависимости» выше) и один раз прогреть
+CmdStan для Prophet:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+python -c "import cmdstanpy; cmdstanpy.install_cmdstan()"  # разово, ~4 мин
 uvicorn app.main:app --reload
 ```
 
 Открыть `http://localhost:8000/docs` — Swagger со всеми эндпоинтами.
-
-Через Docker — см. `docker-compose.yml` в корне репозитория.
 
 ## Тесты
 
