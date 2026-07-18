@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { submitManualCorrection, uploadBill } from "@/lib/api";
-import { getProfileId } from "@/lib/profile";
+import { useProfileId } from "@/lib/profile";
 import type { BillUploadResponse } from "@/lib/types";
 
 export default function BillsPage() {
   const router = useRouter();
-  const [profileId] = useState(() => getProfileId());
+  const profileId = useProfileId();
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [ocrResult, setOcrResult] = useState<BillUploadResponse | null>(null);
   const [amount, setAmount] = useState<number | undefined>();

@@ -1,18 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { sendChatMessage } from "@/lib/api";
-import { getProfileId } from "@/lib/profile";
+import { useProfileId } from "@/lib/profile";
 
 interface ChatEntry {
   role: "user" | "coach";
   text: string;
 }
 
+// useSearchParams требует Suspense-границу в App Router — поэтому страница
+// разбита на обёртку и внутренний компонент.
 export default function ChatPage() {
-  const [profileId] = useState(() => getProfileId());
-  const [message, setMessage] = useState("");
+  return (
+    <Suspense fallback={<p className="text-sm text-foreground/60">Загрузка…</p>}>
+      <ChatPageInner />
+    </Suspense>
+  );
+}
+
+function ChatPageInner() {
+  const searchParams = useSearchParams();
+  // useProfileId вместо useState(getProfileId): без hydration mismatch
+  // (см. lib/profile.ts).
+  const profileId = useProfileId();
+  // Дашборд передаёт готовый вопрос через ?q= — поле уже заполнено, остаётся
+  // нажать «Отправить». Один переход вместо «перейди и перепечатай вопрос».
+  const [message, setMessage] = useState(() => searchParams.get("q") ?? "");
   const [history, setHistory] = useState<ChatEntry[]>([]);
   const [status, setStatus] = useState<"idle" | "sending">("idle");
 
@@ -34,6 +50,11 @@ export default function ChatPage() {
     } finally {
       setStatus("idle");
     }
+  }
+
+  if (profileId === undefined) {
+    // Гидрация ещё идёт — тот же плейсхолдер, что и серверный Suspense-fallback.
+    return <p className="text-sm text-foreground/60">Загрузка…</p>;
   }
 
   if (!profileId) {
@@ -78,6 +99,11 @@ export default function ChatPage() {
             {entry.text}
           </div>
         ))}
+        {status === "sending" && (
+          <p className="self-start text-sm text-foreground/50">
+            Коуч печатает…
+          </p>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-3">
