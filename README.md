@@ -20,7 +20,7 @@ AI-ассистент, который по загруженному счёту /
 | ML (прогноз) | Prophet — одна модель, без ансамбля (см. MVP-скоуп в CLAUDE.md) |
 | Аномалии | Пороговое правило (не ML) — рост потребления ≥30% к базе пользователя |
 | LLM (чат) | Каскад: **OpenAI** (основной путь) → Gemini → Ollama (офлайн) → детерминированный fallback. Gemini free tier у команды недоступен из-за регионального ограничения аккаунта Google — см. [backend/README.md](backend/README.md#ai-чат-энергокоуч-structured-pipeline) |
-| DB | PostgreSQL |
+| DB | PostgreSQL через SQLAlchemy 2 + psycopg 3 (профили, техника, счета) |
 | Deploy | Docker (docker-compose) + Railway |
 
 ## Архитектура
@@ -32,7 +32,9 @@ AI-ассистент, который по загруженному счёту /
    │  fetch, JSON/multipart
    ▼
 FastAPI (:8000)  ─┬─ routers/        HTTP-слой: онбординг, счета, прогноз, аномалии, чат
+                   │                  (сессия БД через Depends(get_db))
                    ├─ models/schemas.py   Pydantic-контракты запросов/ответов
+                   ├─ db/             SQLAlchemy 2 + psycopg3: engine, ORM, get_db
                    └─ services/       бизнес-логика:
                         onboarding_service   — профиль квартиры/техники/тарифа
                         bills_service        — OCR/разбор счёта (Tesseract | PyMuPDF-таблица)
@@ -44,12 +46,13 @@ FastAPI (:8000)  ─┬─ routers/        HTTP-слой: онбординг, с
                                  (профиль + прогноз + аномалии + тариф)
                               2. рендерит в явный блок фактов для промпта
                               3. вызывает LLM-каскад (OpenAI → Gemini → Ollama → offline)
-                              4. держит память диалога по profile_id
-   │
+                              4. держит память диалога по profile_id (сессионное
+                                 состояние, живёт в процессе — не бизнес-данные)
+   │  профили / техника / счета
    ▼
-PostgreSQL (:5432)  — поднимается в docker-compose, приложение пока хранит
-                       профили/историю в памяти процесса (следующий шаг —
-                       перенести в БД, схема готова к этому)
+PostgreSQL (:5432)  — таблицы profiles / appliances / bills (docker-compose,
+                       volume). Данные переживают перезапуск backend: прогноз,
+                       аномалии и контекст чата читаются из БД.
 ```
 
 Ключевой момент архитектуры: у чата **нет собственной аналитики** — весь
@@ -92,7 +95,7 @@ cp backend/.env.example backend/.env
 | `OPENAI_MODEL` | Нет (дефолт `gpt-4o-mini`) | Модель OpenAI | — |
 | `GEMINI_API_KEY` | Нет | Запасной LLM-провайдер в каскаде | https://aistudio.google.com/apikey — у нашей команды упирается в `429 limit: 0` (региональное ограничение аккаунта Google), поэтому не основной путь |
 | `OLLAMA_BASE_URL` | Нет | Локальная модель как офлайн-запасной вариант | см. таблицу в [backend/README.md](backend/README.md) — значение отличается для Docker (`host.docker.internal`) и для запуска вне Docker (`localhost`) |
-| `DATABASE_URL` | Нет (задаётся в docker-compose) | Строка подключения к Postgres | — |
+| `DATABASE_URL` | Нет (docker-compose передаёт свой) | Подключение к Postgres. Пишите нейтрально `postgresql://...` — драйвер `+psycopg` подставляется в коде. Дефолт — для запуска вне Docker (`localhost:5432`) | — |
 | `CORS_ORIGINS` | Нет (есть безопасный dev-дефолт) | Какие origin фронтенда бэкенд пускает | — |
 
 Без `OPENAI_API_KEY` (и остальных LLM-ключей) чат **не падает** — отвечает
