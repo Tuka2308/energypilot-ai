@@ -1,10 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.db.base import init_db
 from app.routers import anomalies, bills, chat, forecast, onboarding
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Создаём таблицы при старте (create_all идемпотентен, данные в volume
+    # Postgres не трогает — см. app/db/base.init_db). Docker-compose держит
+    # backend через depends_on: db healthy, поэтому Postgres уже готов.
+    init_db()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 # CORS открыт под локальный Next.js дев-сервер — на хакатоне фронт и бэк
 # всегда идут парой, отдельный env для origin пока избыточен.

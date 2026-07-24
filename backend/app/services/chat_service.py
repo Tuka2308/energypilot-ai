@@ -21,10 +21,11 @@
    расчётом («бойлер 2 кВт ~3ч/день ≈ 180 кВт·ч × 22 ₸ ...»), запрет на
    выдуманные числа, краткость, русский язык.
 
-4. ПАМЯТЬ ДИАЛОГА (`_sessions`). История сообщений сессии хранится
-   in-memory по profile_id (как профили/история счетов — БД следующий
-   шаг). Уточняющий вопрос («а если стирать ночью?») уходит в LLM вместе
-   с предыдущими репликами, обрезанными до MAX_TURNS последних пар.
+4. ПАМЯТЬ ДИАЛОГА (`_sessions`). История сообщений разговора по profile_id.
+   Это сессионное состояние диалога (не бизнес-данные — профили и счета
+   лежат в PostgreSQL), поэтому намеренно живёт в процессе. Уточняющий
+   вопрос («а если стирать ночью?») уходит в LLM вместе с предыдущими
+   репликами, обрезанными до MAX_TURNS последних пар.
 
 5. ВЫЗОВ LLM (`_call_llm`). Каскад провайдеров, первый настроенный и
    рабочий побеждает: OpenAI (JSON-mode, рекомендованный путь — Gemini
@@ -46,6 +47,8 @@ import json
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.models.schemas import (
     AnomaliesResponse,
@@ -60,8 +63,9 @@ from app.services import anomalies_service, forecast_service, onboarding_service
 
 logger = logging.getLogger(__name__)
 
-# Пар «вопрос-ответ» в памяти диалога. Больше не нужно: контекст фактов
-# передаётся каждый раз заново, история нужна только для уточняющих вопросов.
+# Сколько пар «вопрос-ответ» держим в памяти диалога. Больше не нужно:
+# контекст фактов пересобирается из БД на каждый запрос, история сессии
+# нужна только для уточняющих вопросов.
 MAX_TURNS = 8
 
 _sessions: dict[str, list[dict[str, str]]] = {}
@@ -81,11 +85,11 @@ class CoachContext:
     anomalies: AnomaliesResponse
 
 
-def build_context(profile_id: str) -> CoachContext:
+def build_context(db: Session, profile_id: str) -> CoachContext:
     return CoachContext(
-        profile=onboarding_service.get_profile(profile_id),
-        forecast=forecast_service.get_forecast(profile_id),
-        anomalies=anomalies_service.get_anomalies(profile_id),
+        profile=onboarding_service.get_profile(db, profile_id),
+        forecast=forecast_service.get_forecast(db, profile_id),
+        anomalies=anomalies_service.get_anomalies(db, profile_id),
     )
 
 
@@ -345,8 +349,8 @@ def _fallback_reply(ctx: CoachContext) -> tuple[str, float | None]:
 # --- Шаги 4+6: публичная точка входа -----------------------------------------
 
 
-def get_coach_reply(payload: ChatMessageRequest) -> ChatMessageResponse:
-    ctx = build_context(payload.profile_id)
+def get_coach_reply(db: Session, payload: ChatMessageRequest) -> ChatMessageResponse:
+    ctx = build_context(db, payload.profile_id)
     system_prompt = SYSTEM_RULES + "\n\n" + _render_facts(ctx)
 
     history = _sessions.setdefault(payload.profile_id, [])

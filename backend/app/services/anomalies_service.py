@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import Session
+
 from app.models.schemas import Anomaly, AnomaliesResponse, AnomalySeverity, AnomalyStatus
 from app.services import bill_history_service
 from app.services.bill_history_service import BillReading
@@ -41,8 +43,8 @@ ANOMALY_THRESHOLD_PERCENT = 30.0
 HIGH_SEVERITY_PERCENT = 60.0
 
 
-def get_anomalies(profile_id: str) -> AnomaliesResponse:
-    history = bill_history_service.get_history(profile_id)
+def get_anomalies(db: Session, profile_id: str) -> AnomaliesResponse:
+    history = bill_history_service.get_history(db, profile_id)
 
     if len(history) < MIN_HISTORY_POINTS:
         return AnomaliesResponse(

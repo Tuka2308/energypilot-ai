@@ -2,16 +2,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Настройки приложения из переменных окружения / .env.
-
-    На этапе скелета реально используется только пара полей (CORS, порт БД
-    для docker-compose), остальные — заготовки под шаг с реальной логикой
-    (OCR/ML/LLM), чтобы не переделывать конфиг позже.
-    """
+    """Настройки приложения из переменных окружения / .env."""
 
     app_name: str = "EnergyPilot AI API"
     environment: str = "development"
 
+    # Подключение к PostgreSQL. Дефолт — для запуска backend напрямую
+    # (Postgres проброшен docker-compose'ом на localhost:5432). В контейнере
+    # docker-compose передаёт DATABASE_URL с хостом `db`. Схему пишем
+    # нейтрально `postgresql://` — драйвер (+psycopg) подставляется в
+    # app/db/base.py, чтобы одно и то же значение работало и здесь, и в
+    # любых внешних инструментах (psql, миграторы).
     database_url: str = "postgresql://energypilot:energypilot@localhost:5432/energypilot"
 
     # Каскад чат-провайдеров (см. chat_service._call_llm): OpenAI -> Gemini
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     # Офлайн-fallback по стеку CLAUDE.md: локальный Ollama, если нет ни
     # одного облачного ключа (например, http://localhost:11434).
     ollama_base_url: str | None = None
-    ollama_model: str = "llama3.1"
+    ollama_model: str = "llama3"
 
     # Next.js dev-сервер занимает следующий свободный порт (3000, 3001,
     # 3002...), если предыдущий держит зависший процесс. Перечисляем эти

@@ -21,15 +21,24 @@ pymupdf==1.28.0
 prophet==1.3.0
 pandas==3.0.3
 
-# AI-чат энергокоуч (app/services/chat_service.py): каскад провайдеров —
-# google-genai (Gemini, первый в каскаде — бесплатный ключ команды) и
-# openai SDK. Офлайн-fallback'ам SDK не нужен: Ollama вызывается через
-# stdlib urllib, детерминированный fallback — чистый Python.
+# AI-чат энергокоуч (app/services/chat_service.py): каскад провайдеров.
+# Реальный порядок в _call_llm — OpenAI → Gemini → Ollama → офлайн-fallback
+# (OpenAI первым: Gemini free tier у команды недоступен по региону, см.
+# backend/README.md). openai — основной путь, google-genai — запасной.
+# Офлайн-fallback'ам SDK не нужен: Ollama вызывается через stdlib urllib,
+# детерминированный fallback — чистый Python.
 google-genai==2.12.1
 openai==2.46.0
 
-# Тесты (регрессия распознавания счёта на реальном fixture + прогноз + чат).
-pytest==8.3.3
+# Персистентность в PostgreSQL (app/db/*). psycopg[binary] — драйвер v3
+# (psycopg2-binary НЕ ставится под локальный Python 3.14, проверено);
+# binary-wheel есть и для 3.14 (venv), и для 3.12-slim (контейнер).
+# SQLAlchemy 2.0.51: более ранние 2.0.x падают на разборе аннотаций
+# Mapped[X | None] под Python 3.14 (в контейнере 3.12 работали и они, но
+# держим одну версию для обоих окружений).
+sqlalchemy==2.0.51
+psycopg[binary]==3.2.10
 
-# SQLAlchemy + Postgres-драйвер добавятся, когда роуты начнут реально
-# писать в БД (сейчас сервисы — моки, зависимость была бы неиспользуемой).
+# Тесты (распознавание счёта, прогноз, аномалии, чат — на изолированной
+# тестовой БД PostgreSQL, см. tests/conftest.py).
+pytest==8.3.3

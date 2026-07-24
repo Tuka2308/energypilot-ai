@@ -33,6 +33,7 @@ from uuid import uuid4
 
 import pytesseract
 from PIL import Image, ImageOps
+from sqlalchemy.orm import Session
 
 from app.models.schemas import BillManualCorrection, BillUploadResponse
 from app.services import bill_history_service
@@ -94,7 +95,11 @@ TESSERACT_LANGS = "rus+eng"
 
 
 def process_bill_upload(
-    filename: str, content: bytes, content_type: str | None, profile_id: str | None = None
+    db: Session,
+    filename: str,
+    content: bytes,
+    content_type: str | None,
+    profile_id: str | None = None,
 ) -> BillUploadResponse:
     bill_id = str(uuid4())
     is_pdf = (content_type == "application/pdf") or filename.lower().endswith(".pdf")
@@ -106,24 +111,26 @@ def process_bill_upload(
             logger.warning("Не удалось разобрать PDF счёта %s", filename, exc_info=True)
             return _manual_review_response(bill_id, "pdf_parse_error")
         if structured is not None:
-            _record_if_confident(profile_id, structured)
+            _record_if_confident(db, profile_id, structured)
             return structured
         # PDF без текстового слоя (скан) — падаем в OCR-путь ниже.
 
     response = _extract_via_ocr(bill_id, filename, content, content_type)
-    _record_if_confident(profile_id, response)
+    _record_if_confident(db, profile_id, response)
     return response
 
 
-def apply_manual_correction(payload: BillManualCorrection) -> BillUploadResponse:
+def apply_manual_correction(db: Session, payload: BillManualCorrection) -> BillUploadResponse:
     # Ручная правка — это подтверждённое пользователем показание, пишем в
     # историю (если фронт передал profile_id). Именно эти данные потом
     # кормят Prophet-прогноз.
-    bill_history_service.record_reading(
+    _safe_record(
+        db,
         profile_id=payload.profile_id or "",
         period=payload.period,
         amount_tenge=payload.amount_tenge,
         consumption_kwh=payload.consumption_kwh,
+        ocr_status="manual_override",
     )
     return BillUploadResponse(
         bill_id=payload.bill_id,
@@ -135,7 +142,7 @@ def apply_manual_correction(payload: BillManualCorrection) -> BillUploadResponse
     )
 
 
-def _record_if_confident(profile_id: str | None, response: BillUploadResponse) -> None:
+def _record_if_confident(db: Session, profile_id: str | None, response: BillUploadResponse) -> None:
     """Пишем в историю только уверенно распознанные счета (не те, что ушли
     на ручную проверку) и только если известны profile_id/период/сумма."""
     if (
@@ -144,12 +151,25 @@ def _record_if_confident(profile_id: str | None, response: BillUploadResponse) -
         and response.period
         and response.amount_tenge is not None
     ):
-        bill_history_service.record_reading(
+        _safe_record(
+            db,
             profile_id=profile_id,
             period=response.period,
             amount_tenge=response.amount_tenge,
             consumption_kwh=response.consumption_kwh,
+            ocr_status=response.ocr_status,
         )
+
+
+def _safe_record(db: Session, **kwargs) -> None:
+    """Запись в историю не должна ронять эндпоинт счёта: OCR-ответ уже готов и
+    важнее, чем побочная запись в БД. При ошибке — откат и лог, а не 500 (то
+    же правило graceful-degradation, что и для самого распознавания)."""
+    try:
+        bill_history_service.record_reading(db, **kwargs)
+    except Exception:
+        db.rollback()
+        logger.warning("Не удалось записать счёт в историю профиля", exc_info=True)
 
 
 def _manual_review_response(

@@ -18,6 +18,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import Session
+
 from app.models.schemas import (
     ForecastCategoryBreakdown,
     ForecastResponse,
@@ -54,8 +56,8 @@ TYPICAL_SHARES = [
 ]
 
 
-def get_forecast(profile_id: str) -> ForecastResponse:
-    history = bill_history_service.get_history(profile_id)
+def get_forecast(db: Session, profile_id: str) -> ForecastResponse:
+    history = bill_history_service.get_history(db, profile_id)
 
     if len(history) < MIN_HISTORY_POINTS:
         return _insufficient(profile_id, len(history))
