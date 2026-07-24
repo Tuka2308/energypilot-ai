@@ -20,10 +20,11 @@ def _read(path: Path) -> bytes:
     return path.read_bytes()
 
 
-def test_real_kz_receipt_extracts_correct_values():
+def test_real_kz_receipt_extracts_correct_values(db):
     """Табличный PDF ЭСО: реальные значения — 1789.65 ₸ (сумма с НДС),
     70 кВт·ч, июнь 2026. Раньше сервис возвращал 2026/6 и success."""
     result = process_bill_upload(
+        db,
         filename="sample_receipt_kz.pdf",
         content=_read(KZ_RECEIPT),
         content_type="application/pdf",
@@ -40,8 +41,9 @@ def test_real_kz_receipt_extracts_correct_values():
     assert result.consumption_kwh != 6
 
 
-def test_corrupt_bytes_go_to_manual_review_not_500():
+def test_corrupt_bytes_go_to_manual_review_not_500(db):
     result = process_bill_upload(
+        db,
         filename="junk.jpg",
         content=b"this is not an image",
         content_type="image/jpeg",
@@ -50,17 +52,17 @@ def test_corrupt_bytes_go_to_manual_review_not_500():
     assert result.amount_tenge is None
 
 
-def test_empty_file_goes_to_manual_review():
+def test_empty_file_goes_to_manual_review(db):
     result = process_bill_upload(
-        filename="empty.png", content=b"", content_type="image/png"
+        db, filename="empty.png", content=b"", content_type="image/png"
     )
     assert result.requires_manual_review is True
 
 
-def test_manual_review_response_never_invents_amount():
+def test_manual_review_response_never_invents_amount(db):
     """Общий инвариант: если сумма не извлечена — она None, а не догадка."""
     result = process_bill_upload(
-        filename="junk.pdf", content=b"%PDF-1.4 broken", content_type="application/pdf"
+        db, filename="junk.pdf", content=b"%PDF-1.4 broken", content_type="application/pdf"
     )
     assert result.requires_manual_review is True
     assert result.amount_tenge is None
