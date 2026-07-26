@@ -21,7 +21,11 @@ async def upload_bill(
     `profile_id` опционален (Form-поле): если передан, уверенно распознанный
     счёт попадает в историю профиля и участвует в прогнозе. Без него флоу
     работает как раньше — контракт не ломается."""
-    content = await file.read()
+    # Читаем не больше лимита+1 байта. Этого хватает, чтобы сервис отличил
+    # «в пределах лимита» от «больше лимита», и при этом враждебный/ошибочный
+    # многогигабайтный файл не буферизуется целиком в память (первопричина
+    # падения воркера на большом файле — см. bills_service.MAX_UPLOAD_BYTES).
+    content = await file.read(bills_service.MAX_UPLOAD_BYTES + 1)
     return bills_service.process_bill_upload(
         db,
         filename=file.filename or "unknown",

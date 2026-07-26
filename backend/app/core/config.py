@@ -7,6 +7,13 @@ class Settings(BaseSettings):
     app_name: str = "EnergyPilot AI API"
     environment: str = "development"
 
+    # Максимальный размер загружаемого счёта (МБ). Фото/PDF квитанции — это
+    # единицы МБ; 10 МБ с большим запасом. Дефолт намеренно скромный: на
+    # деплое с ограниченной памятью (Railway ~512 МБ) большой файл рендерится
+    # в гигабайтный битмап и роняет воркер по OOM — лимит отсекает это до
+    # начала обработки. См. bills_service.MAX_UPLOAD_BYTES.
+    max_upload_mb: int = 10
+
     # Подключение к PostgreSQL. Дефолт — для запуска backend напрямую
     # (Postgres проброшен docker-compose'ом на localhost:5432). В контейнере
     # docker-compose передаёт DATABASE_URL с хостом `db`. Схему пишем

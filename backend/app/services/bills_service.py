@@ -35,10 +35,39 @@ import pytesseract
 from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.schemas import BillManualCorrection, BillUploadResponse
 from app.services import bill_history_service
 
 logger = logging.getLogger(__name__)
+
+# --- Границы ресурсов (почему это здесь — на защиту) -------------------------
+# Первопричина бага загрузки, найденного на отборе: обработка счёта была НЕ
+# ограничена по памяти. Ни один битый PDF сам по себе не роняет сервис (все
+# ошибки PyMuPDF/PIL уже ловятся и уходят в manual_review), НО:
+#   1. большой файл целиком читался в память (`await file.read()`), и
+#   2. страница рендерилась в картинку на фиксированных 200 DPI —
+#      фото-скан A4 (2480×3508) → битмап ~67 Мп ≈ 200 МБ, плюс копии PIL при
+#      препроцессинге. На деплое с 512 МБ памяти (Railway) это выбивает воркер
+#      по OOM: жюри видит оборванную загрузку (502), а не штатный manual_review.
+# Ниже — два независимых предохранителя: лимит размера входа и лимит
+# разрешения рендера. Любой перебор — это graceful manual_review, не падение.
+
+# Больше — не буферизуем и не обрабатываем (см. config.max_upload_mb). Роутер
+# читает не более MAX_UPLOAD_BYTES+1 байта, поэтому память не вырастает даже на
+# многогигабайтном входе.
+MAX_UPLOAD_BYTES = settings.max_upload_mb * 1024 * 1024
+
+# Целевое разрешение рендера PDF-страницы в картинку для OCR. 200 DPI — потолок
+# качества; фактический DPI понижается так, чтобы длинная сторона не превышала
+# RENDER_MAX_PX. 2200 px по длинной стороне ≈ 150 DPI для A4 — Tesseract читает
+# квитанцию уверенно, а битмап держится в пределах ~10 МБ вместо сотен.
+OCR_RENDER_DPI = 200
+RENDER_MAX_PX = 2200
+
+# Фото-счёт с телефона — максимум ~12 Мп. 40 Мп с запасом; выше считаем мусором/
+# декомпрессионной бомбой и уводим в manual_review, НЕ декодируя пиксели в память.
+MAX_IMAGE_PIXELS = 40_000_000
 
 # Разумные границы месячного счёта городской квартиры в РК (см.
 # docs/research-context.md). Диапазон отсекает грубый мусор (склеенный
@@ -102,6 +131,19 @@ def process_bill_upload(
     profile_id: str | None = None,
 ) -> BillUploadResponse:
     bill_id = str(uuid4())
+
+    # Предохранитель №1 — размер входа. Роутер отдаёт максимум
+    # MAX_UPLOAD_BYTES+1 байт, так что len> лимита означает «файл больше
+    # лимита». Не пытаемся парсить — это и есть та самая нехватка памяти на
+    # большом файле. Пустой файл (0 байт) пропускаем дальше: он штатно
+    # отвалится в parse_error/manual_review ниже.
+    if len(content) > MAX_UPLOAD_BYTES:
+        logger.warning(
+            "Счёт %s больше лимита (%d байт > %d) — на ручную правку",
+            filename, len(content), MAX_UPLOAD_BYTES,
+        )
+        return _manual_review_response(bill_id, "file_too_large")
+
     is_pdf = (content_type == "application/pdf") or filename.lower().endswith(".pdf")
 
     if is_pdf:
@@ -408,7 +450,18 @@ def _load_as_image(filename: str, content: bytes, content_type: str | None) -> I
     is_pdf = (content_type == "application/pdf") or filename.lower().endswith(".pdf")
     if is_pdf:
         return _first_pdf_page_to_image(content)
-    return Image.open(io.BytesIO(content)).convert("RGB")
+
+    # Картинка: сначала читаем ТОЛЬКО заголовок (Image.open ленивый — пиксели
+    # ещё не декодированы, но .size уже известен). Если объявленное разрешение
+    # абсурдно большое — это декомпрессионная бомба или мусор: уходим на
+    # ручную правку, НЕ раздувая память декодом. exif_transpose заодно чинит
+    # ориентацию фото с телефона (частый источник «повёрнутых» снимков).
+    image = Image.open(io.BytesIO(content))
+    width, height = image.size
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ValueError(f"image too large: {width}x{height}px")
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    return _downscale_for_ocr(image)
 
 
 def _first_pdf_page_to_image(content: bytes) -> Image.Image:
@@ -418,8 +471,35 @@ def _first_pdf_page_to_image(content: bytes) -> Image.Image:
         if doc.page_count == 0:
             raise ValueError("PDF без страниц")
         page = doc.load_page(0)
-        pixmap = page.get_pixmap(dpi=200)
+        # Предохранитель №2 — разрешение рендера. DPI подбираем под размер
+        # страницы, чтобы длинная сторона битмапа не превышала RENDER_MAX_PX.
+        # Так страница с абсурдными размерами (dimension-bomb) или скан в 300+
+        # DPI не превращаются в гигабайтный pixmap — качества хватает для OCR,
+        # а память ограничена.
+        pixmap = page.get_pixmap(dpi=_safe_render_dpi(page.rect))
         return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+
+
+def _safe_render_dpi(rect) -> int:
+    """DPI, при котором длинная сторона страницы уложится в RENDER_MAX_PX,
+    но не выше OCR_RENDER_DPI. Вырожденная (нулевая) страница — вернём потолок,
+    пусть дальше решает обычный путь."""
+    longest_pt = max(rect.width, rect.height)
+    if longest_pt <= 0:
+        return OCR_RENDER_DPI
+    fit_dpi = RENDER_MAX_PX * 72.0 / longest_pt
+    return max(1, int(min(OCR_RENDER_DPI, fit_dpi)))
+
+
+def _downscale_for_ocr(image: Image.Image) -> Image.Image:
+    """Ужимает картинку до RENDER_MAX_PX по длинной стороне. Держит рабочий
+    битмап (и его копии в препроцессинге) в десятках МБ вместо сотен."""
+    longest = max(image.size)
+    if longest <= RENDER_MAX_PX:
+        return image
+    scale = RENDER_MAX_PX / longest
+    new_size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
+    return image.resize(new_size)
 
 
 def _run_ocr(image: Image.Image) -> tuple[str, float]:

@@ -96,6 +96,7 @@ cp backend/.env.example backend/.env
 | `GEMINI_API_KEY` | Нет | Запасной LLM-провайдер в каскаде | https://aistudio.google.com/apikey — у нашей команды упирается в `429 limit: 0` (региональное ограничение аккаунта Google), поэтому не основной путь |
 | `OLLAMA_BASE_URL` | Нет | Локальная модель как офлайн-запасной вариант | см. таблицу в [backend/README.md](backend/README.md) — значение отличается для Docker (`host.docker.internal`) и для запуска вне Docker (`localhost`) |
 | `DATABASE_URL` | Нет (docker-compose передаёт свой) | Подключение к Postgres. Пишите нейтрально `postgresql://...` — драйвер `+psycopg` подставляется в коде. Дефолт — для запуска вне Docker (`localhost:5432`) | — |
+| `MAX_UPLOAD_MB` | Нет (дефолт 10) | Потолок размера загружаемого счёта. Больше — сразу ручная правка, файл не обрабатывается (защита памяти воркера от больших/бомбовых PDF — см. [backend/README.md](backend/README.md#границы-по-памяти-почему-загрузка-не-роняет-сервис)) | — |
 | `CORS_ORIGINS` | Нет (есть безопасный dev-дефолт) | Какие origin фронтенда бэкенд пускает | — |
 
 Без `OPENAI_API_KEY` (и остальных LLM-ключей) чат **не падает** — отвечает
